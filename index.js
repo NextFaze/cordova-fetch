@@ -19,7 +19,6 @@ var Q = require('q');
 var shell = require('shelljs');
 var superspawn = require('cordova-common').superspawn;
 var events = require('cordova-common').events;
-var depls = require('dependency-ls');
 var url = require('url');
 var path = require('path');
 var fs = require('fs');
@@ -41,102 +40,31 @@ var hostedGitInfo = require('hosted-git-info');
 module.exports = function (target, dest, opts) {
     var fetchArgs = opts.link ? ['link'] : ['install'];
     opts = opts || {};
-    var tree1;
     var nodeModulesDir = dest;
 
-    // check if npm is installed
-    return module.exports.isNpmInstalled()
-        .then(function () {
-            if (dest && target) {
-                // add target to fetchArgs Array
-                fetchArgs.push(target);
+    if (dest && target) {
 
-                // append node_modules to nodeModulesDir if it doesn't come included
-                if (path.basename(dest) !== 'node_modules') {
-                    nodeModulesDir = path.resolve(path.join(dest, 'node_modules'));
-                }
-                // create node_modules if it doesn't exist
-                if (!fs.existsSync(nodeModulesDir)) {
-                    shell.mkdir('-p', nodeModulesDir);
-                }
-            } else return Q.reject(new CordovaError('Need to supply a target and destination'));
+        // add target to fetchArgs Array
+        fetchArgs.push(target);
 
-            // set the directory where npm install will be run
-            opts.cwd = dest;
-            // npm should use production by default when install is npm run
+        // append node_modules to nodeModulesDir if it doesn't come included
+        if (path.basename(dest) !== 'node_modules') {
+            nodeModulesDir = path.resolve(path.join(dest, 'node_modules'));
+        }
+        // create node_modules if it doesn't exist
+        if (!fs.existsSync(nodeModulesDir)) {
+            shell.mkdir('-p', nodeModulesDir);
+        }
+    } else return Q.reject(new CordovaError('Need to supply a target and destination'));
 
-            if ((opts.production) || (opts.production === undefined)) {
-                fetchArgs.push('--production');
-                opts.production = true;
-            }
+    opts.cwd = dest;
+    // Skip dependencye tree checking and install
 
-            // if user added --save flag, pass it to npm install command
-            if (opts.save_exact) {
-                events.emit('verbose', 'saving exact');
-                fetchArgs.push('--save-exact');
-            } else if (opts.save) {
-                events.emit('verbose', 'saving');
-                fetchArgs.push('--save');
-            } else {
-                fetchArgs.push('--no-save');
-            }
-            // Grab json object of installed modules before npm install
-            return depls(nodeModulesDir);
-        })
-        .then(function (depTree) {
-            tree1 = depTree;
-            // install new module
-            return superspawn.spawn('npm', fetchArgs, opts);
-        })
-        .then(function (output) {
-            // Grab object of installed modules after npm install
-            return depls(nodeModulesDir);
-        })
-        .then(function (depTree2) {
-            var tree2 = depTree2;
-
-            // getJsonDiff will fail if the module already exists in node_modules.
-            // Need to use trimID in that case.
-            // This could happen on a platform update.
-            var id = getJsonDiff(tree1, tree2) || trimID(target);
-            return module.exports.getPath(id, nodeModulesDir, target);
-        })
-        .fail(function (err) {
-            return Q.reject(new CordovaError(err));
-        });
+    var id = trimID(target);
+    events.emit('verbose', 'plugin ' + id + ' prepare');
+    return module.exports.getPath(id, nodeModulesDir, target);
 };
 
-/*
- * Takes two JSON objects and returns the key of the new property as a string.
- * If a module already exists in node_modules, the diff will be blank.
- * cordova-fetch will use trimID in that case.
- *
- * @param {Object} obj1     json object representing installed modules before latest npm install
- * @param {Object} obj2     json object representing installed modules after latest npm install
- *
- * @return {String}         String containing the key value of the difference between the two objects
- *
- */
-function getJsonDiff (obj1, obj2) {
-    var result = [];
-    // regex to filter out peer dependency warnings from result
-    var re = /UNMET PEER DEPENDENCY/;
-
-    for (var key in obj2) {
-        // if it isn't a unmet peer dependency, continue
-        if (key.search(re) === -1) {
-            if (obj2[key] !== obj1[key]) {
-                result.push(key);
-            }
-        }
-    }
-    if (result.length > 1) {
-        // something went wrong if we have more than one module installed at a time
-        return false;
-    }
-    // only return the first element
-    return result[0];
-}
 /*
  * Takes the specified target and returns the moduleID
  * If the git repoName is different than moduleID, then the
