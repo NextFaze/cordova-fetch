@@ -62,7 +62,7 @@ module.exports = function (target, dest, opts) {
 
     var id = trimID(target);
     events.emit('verbose', 'plugin ' + id + ' prepare');
-    return module.exports.getPath(id, nodeModulesDir, target);
+    return Q.resolve(module.exports.getPath(id, nodeModulesDir, target));
 };
 
 /*
