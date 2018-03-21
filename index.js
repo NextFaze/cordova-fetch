@@ -140,6 +140,8 @@ function getPath (id, dest, target) {
     var finalDest = fs.existsSync(destination) ? destination : searchDirForTarget(dest, target);
 
     if (!finalDest) {
+	console.log('Failed to get module path for ' + id + '. Make sure it is installed manually via NPM.');
+	console.log('(checked:' + destination + ')');
         throw new CordovaError('Failed to get absolute path to installed module');
     }
 
